@@ -107,35 +107,40 @@ public class InitConfig {
 			settingService.set("nginxPath", nginxPath);
 		}
 
-		if (SystemTool.isLinux()) {
-			// 释放acme全新包
-			ClassPathResource resource = new ClassPathResource("acme.zip");
-			InputStream inputStream = resource.getStream();
-			FileUtil.writeFromStream(inputStream, homeConfig.home + "acme.zip");
-			FileUtil.mkdir(homeConfig.acmeShDir);
-			ZipUtil.unzip(homeConfig.home + "acme.zip", homeConfig.acmeShDir);
-			FileUtil.del(homeConfig.home + "acme.zip");
+		// 释放acme全新包
+		ClassPathResource resource = new ClassPathResource("acme.zip");
+		InputStream inputStream = resource.getStream();
+		FileUtil.writeFromStream(inputStream, homeConfig.home + "acme.zip");
+		FileUtil.mkdir(homeConfig.acmeShDir);
+		ZipUtil.unzip(homeConfig.home + "acme.zip", homeConfig.acmeShDir);
+		FileUtil.del(homeConfig.home + "acme.zip");
 
-			// 修改acme.sh文件
-			List<String> res = FileUtil.readUtf8Lines(homeConfig.acmeSh);
-			for (int i = 0; i < res.size(); i++) {
-				if (res.get(i).contains("DEFAULT_INSTALL_HOME=\"$HOME/.$PROJECT_NAME\"")) {
-					res.set(i, "DEFAULT_INSTALL_HOME=\"" + homeConfig.acmeShDir + "\"");
-				}
+		// 修改acme.sh文件
+		List<String> res = FileUtil.readUtf8Lines(homeConfig.acmeSh);
+		for (int i = 0; i < res.size(); i++) {
+			if (res.get(i).contains("DEFAULT_INSTALL_HOME=\"$HOME/.$PROJECT_NAME\"")) {
+				res.set(i, "DEFAULT_INSTALL_HOME=\"" + homeConfig.acmeShDir + "\"");
 			}
+		}
+		FileUtil.writeUtf8Lines(res, homeConfig.acmeSh);
 
-			FileUtil.writeUtf8Lines(res, homeConfig.acmeSh);
+		if (SystemTool.isLinux()) {
 			RuntimeUtil.exec("chmod a+x " + homeConfig.acmeSh);
 
 			// 查找ngx_stream_module模块
 			if (!basicService.contain("ngx_stream_module.so")) {
-				logger.info(m.get("commonStr.ngxStream"));
-				List<String> list = RuntimeUtil.execForLines(CharsetUtil.systemCharset(), "find / -name ngx_stream_module.so");
-				for (String path : list) {
-					if (path.contains("ngx_stream_module.so") && path.length() < 80) {
-						Basic basic = new Basic("load_module", path, -10l);
-						sqlHelper.insert(basic);
-						break;
+				if (FileUtil.exist("/usr/lib/nginx/modules/ngx_stream_module.so")) {
+					Basic basic = new Basic("load_module", "/usr/lib/nginx/modules/ngx_stream_module.so", -10l);
+					sqlHelper.insert(basic);
+				} else {
+					logger.info(m.get("commonStr.ngxStream"));
+					List<String> list = RuntimeUtil.execForLines(CharsetUtil.systemCharset(), "find / -name ngx_stream_module.so");
+					for (String path : list) {
+						if (path.contains("ngx_stream_module.so") && path.length() < 80) {
+							Basic basic = new Basic("load_module", path, -10l);
+							sqlHelper.insert(basic);
+							break;
+						}
 					}
 				}
 			}
